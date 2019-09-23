@@ -134,3 +134,47 @@ setup() {
 
 	[[ -f "$mainexe" && -x "$mainexe" ]]
 }
+
+@test "go-mod.mk: env overrides" {
+	cat >>Makefile <<-'__EOT__'
+		export CGO_ENABLED = 0
+		include build-aux/go-mod.mk
+		all: build
+		bin_$(GOHOSTOS)_$(GOHOSTARCH)/cmd-a: CGO_ENABLED = 0
+		bin_$(GOHOSTOS)_$(GOHOSTARCH)/cmd-b: CGO_ENABLED = 1
+	__EOT__
+
+	mkdir cmd-a cmd-b
+	cat >cmd-a/main.go <<-'__EOT__'
+		package main
+
+		import (
+			"fmt"
+			"net"
+		)
+
+		func main() {
+			fmt.Println(net.ResolveIPAddr("tcp", "example.com"))
+		}
+	__EOT__
+	cat >cmd-b/main.go <<-'__EOT__'
+		package main
+
+		import (
+			"fmt"
+			"net"
+		)
+
+		func main() {
+			fmt.Println(net.ResolveIPAddr("tcp", "example.com"))
+		}
+	__EOT__
+
+	if [[ "$build_aux_unsupported_go" == true ]] || ! type go &>/dev/null; then
+		make_expecting_go_error
+		return 0
+	fi
+
+	CI=true make -j1 bin_$(go env GOHOSTOS)_$(go env GOHOSTARCH)/cmd-a bin_$(go env GOHOSTOS)_$(go env GOHOSTARCH)/cmd-b
+	CI=true make -j1 bin_$(go env GOHOSTOS)_$(go env GOHOSTARCH)/cmd-b bin_$(go env GOHOSTOS)_$(go env GOHOSTARCH)/cmd-a
+}
